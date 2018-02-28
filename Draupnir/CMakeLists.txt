@@ -8,7 +8,10 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 set (CMAKE_CXX_FLAGS "-Os -ggdb -Wall -Werror")
 
-add_executable(draupnir
+list (APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR})
+find_package (Botan REQUIRED)
+
+add_executable (draupnir
 	Conductor.h
 	Conductor.cpp
 	Config.h
@@ -22,3 +25,7 @@ add_executable(draupnir
 	TargetConductor.cpp
 )
 
+target_link_libraries (draupnir ${BOTAN_LIBRARIES})
+set_target_properties (draupnir PROPERTIES
+    INCLUDE_DIRECTORIES ${BOTAN_INCLUDE_DIR}
+)
