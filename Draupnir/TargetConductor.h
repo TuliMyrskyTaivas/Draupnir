@@ -7,10 +7,11 @@
 #pragma once
 
 #include "Conductor.h"
+#include <botan/tls_server.h>
 
 namespace Draupnir
 {
-	class TargetConductor : public Conductor
+	class TargetConductor final : public Conductor
 	{
 	public:
 		friend class Conductor;
@@ -20,8 +21,6 @@ namespace Draupnir
 
 	protected:
 		TargetConductor(std::shared_ptr<Config> config);
-		void InitializeIO() override;
-		void NegotiateProtocol() override;
 		void CreateTerminal();
 		void ExecShell();
 	};

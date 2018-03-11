@@ -8,12 +8,14 @@
 #include "ControlConductor.h"
 #include "TargetConductor.h"
 #include "Config.h"
+#include "Logger.h"
 
 namespace Draupnir
 {
 	////////////////////////////////////////////////////////////////////////////////////////////////////
 	Conductor::Conductor(std::shared_ptr<Config> config)
 		: m_config(config)
+		, m_socket(-1)
 	{
 	}
 
@@ -21,13 +23,6 @@ namespace Draupnir
 	const Config& Conductor::GetConfig() const
 	{
 		return *m_config;
-	}
-
-	////////////////////////////////////////////////////////////////////////////////////////////////////
-	void Conductor::Run()
-	{
-		InitializeIO();
-		NegotiateProtocol();
 	}
 
 	////////////////////////////////////////////////////////////////////////////////////////////////////
