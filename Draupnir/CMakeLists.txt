@@ -7,9 +7,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 # Compilation modes
-set (CMAKE_CXX_FLAGS "-ggdb -Wall -Werror")
+set (CMAKE_CXX_FLAGS "-ggdb -Wall -Wpedantic -Wextra -Werror")
 set (CMAKE_CXX_FLAGS_DEBUG "-O0")
-set (CMAKE_CXX_FLAGS_RELEASE "-Os")
+set (CMAKE_CXX_FLAGS_RELEASE "-Os -mtune=native -march=native")
 
 # External modules
 list (APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR})

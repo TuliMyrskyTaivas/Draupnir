@@ -56,7 +56,7 @@ namespace Draupnir
 	}
 
 	////////////////////////////////////////////////////////////////////////////////////////////////////
-	void TLSCallbacks::tls_record_received(uint64_t seqNo, const uint8_t data[], size_t size)
+	void TLSCallbacks::tls_record_received(uint64_t seqNo __attribute__((unused)), const uint8_t data[], size_t size)
 	{
 		Logger::GetInstance().Debug() << "TLS record received: " << size << " bytes";
 		RawWrite(std::vector<uint8_t>(data, data + size));

@@ -89,9 +89,10 @@ namespace Draupnir
 	//////////////////////////////////////////////////////////////////////////
 	void Logger::SetVerboseMode(bool isVerbose)
 	{
-		m_consoleLevel = LOG_DEBUG;
+		const LogLevel level = isVerbose ? LOG_DEBUG : LOG_INFO;
+		m_consoleLevel = level;
 		if (m_logFile.is_open())
-			m_fileLevel = LOG_DEBUG;
+			m_fileLevel = level;
 	}
 
 	//////////////////////////////////////////////////////////////////////////

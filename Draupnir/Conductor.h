@@ -14,9 +14,6 @@ namespace Draupnir
 	class Conductor
 	{
 		std::shared_ptr<Config> m_config;
-		int m_socket;
-
-		void WriteData(const uint8_t* data, size_t size);
 
 	protected:
 		explicit Conductor(std::shared_ptr<Config> config);
