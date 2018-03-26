@@ -8,12 +8,12 @@
 
 #include "Posix.h"
 #include "Conductor.h"
+#include "TLSPolicy.h"
 #include "TLSCallbacks.h"
 #include "CredentialsManager.h"
 
 #include <botan/auto_rng.h>
 #include <botan/tls_client.h>
-#include <botan/tls_policy.h>
 #include <botan/tls_session_manager.h>
 
 #include <memory>
@@ -24,15 +24,16 @@ namespace Draupnir
 	{
 		SocketHandle m_socket;
 
+		TLSPolicy m_policy;
 		TLSCallbacks m_tlsCallbacks;
 		CredentialsManager m_creds;
 		Botan::AutoSeeded_RNG m_rng;
-		Botan::TLS::Strict_Policy m_policy;
 		Botan::TLS::Session_Manager_In_Memory m_sessionMgr;
 		Botan::TLS::Client m_tls;
 
-		SocketHandle ConnectSocket();
+		SocketHandle ConnectSocket() const;
 	public:
+		virtual ~ControlConductor() = default;
 		void Run() final;
 
 	protected:

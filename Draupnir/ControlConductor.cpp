@@ -30,7 +30,7 @@ namespace Draupnir
 	}
 
 	////////////////////////////////////////////////////////////////////////////////////////////////////
-	SocketHandle ControlConductor::ConnectSocket()
+	SocketHandle ControlConductor::ConnectSocket() const
 	{
 		const auto addr = GetConfig().GetPeerAddress();
 		SocketHandle sock(socket(addr->ai_family, addr->ai_socktype | SOCK_NONBLOCK, 0));
