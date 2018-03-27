@@ -25,11 +25,8 @@ namespace Draupnir
 	////////////////////////////////////////////////////////////////////////////////////////////////////
 	TargetConductor::TargetConductor(std::shared_ptr<Config> config)
 		: Conductor(config)
-		, m_socket(BindSocket())
+		, m_listeningSocket(BindSocket())
 		, m_poll(epoll_create1(0))
-		, m_tlsCallbacks(m_socket.get())
-		, m_sessionMgr(m_rng)
-		, m_tls(m_tlsCallbacks, m_sessionMgr, m_creds, m_policy, m_rng)
 	{
 	}
 
@@ -54,26 +51,29 @@ namespace Draupnir
 
 		{
 			struct epoll_event event;
-			event.data.fd = m_socket.get();
+			event.data.fd = m_listeningSocket.get();
 			event.events = EPOLLIN | EPOLLET;
-			POSIX_CHECK(epoll_ctl(m_poll.get(), EPOLL_CTL_ADD, m_socket.get(), &event));
+			POSIX_CHECK(epoll_ctl(m_poll.get(), EPOLL_CTL_ADD, m_listeningSocket.get(), &event));
 		}
 
 		std::vector<struct epoll_event> events(64);
 		while (true)
 		{
-			POSIX_CHECK(epoll_wait(m_poll.get(), events.data(), events.size(), -1));
-			for (const auto& event : events)
+			const int numEvents = epoll_wait(m_poll.get(), events.data(), events.size(), -1);
+			POSIX_CHECK(numEvents);
+			for (int idx = 0; idx < numEvents; ++idx)
 			{
+				const auto& event = events[idx];
 				if ((event.events & EPOLLERR) || (event.events & EPOLLHUP) ||
 					(!(event.events & EPOLLIN)))
 				{
 					log.Error() << "error reading socket " << event.data.fd;
+					m_activeSessions.erase(event.data.fd);
 					close(event.data.fd);
 					continue;
 				}
 
-				if ((int)m_socket.get() == event.data.fd)
+				if ((int)m_listeningSocket.get() == event.data.fd)
 				{
 					AcceptConnections();
 				}
@@ -82,10 +82,11 @@ namespace Draupnir
 					// We have a data on the socket waiting to be read. We must read whatever
 					// data is available completely, as we are running in edge-triggered mode
 					// and won't get a notification again for the same data
-					while(true)
+					auto& session = m_activeSessions.at(event.data.fd);
+					while (true)
 					{
 						std::vector<uint8_t> buf(512);
-						const ssize_t count = read(m_socket.get(), buf.data(), buf.size());
+						const ssize_t count = read(event.data.fd, buf.data(), buf.size());
 						if (count == -1)
 						{
 							// If errno == EAGAIN, that means we have read all the data.
@@ -97,7 +98,7 @@ namespace Draupnir
 						else if (count == 0)
 							break;
 
-						m_tls.received_data(buf.data(), count);
+						session.ReceivedData(buf.data(), count);
 					}
 				}
 			}
@@ -113,7 +114,7 @@ namespace Draupnir
 		{
 			struct sockaddr inAddr;
 			socklen_t inAddrLen;
-			SocketHandle sock(accept(m_socket.get(), &inAddr, &inAddrLen));
+			SocketHandle sock(accept(m_listeningSocket.get(), &inAddr, &inAddrLen));
 			if (!sock)
 			{
 				// We have processed all incoming connections
@@ -140,6 +141,8 @@ namespace Draupnir
 			event.data.fd = sock.get();
 			event.events = EPOLLIN | EPOLLET;
 			POSIX_CHECK(epoll_ctl(m_poll.get(), EPOLL_CTL_ADD, sock.get(), &event));
+
+			m_activeSessions.emplace(std::make_pair(sock.get(), std::move(sock)));
 		}
 	}
 

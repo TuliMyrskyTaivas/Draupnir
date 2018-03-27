@@ -56,6 +56,8 @@ add_executable (draupnir
 	Posix.cpp
 	TargetConductor.h
 	TargetConductor.cpp
+	TargetSession.h
+	TargetSession.cpp
 	TLSCallbacks.h
 	TLSCallbacks.cpp
 	TLSPolicy.h

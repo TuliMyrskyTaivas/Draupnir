@@ -49,13 +49,19 @@ std::vector<Botan::X509_Certificate> CredentialsManager::cert_chain(
 	const std::string& type,
 	const std::string& context)
 {
+	std::vector<Botan::X509_Certificate> result;
+
 	std::ostringstream buf;
 	buf << "certificate chain is requested for " << type << '/' << context << ": ";
 	std::copy(certKeyTypes.begin(),
 		certKeyTypes.end(),
 		std::ostream_iterator<std::string>(buf, ", "));
 	Logger::GetInstance().Debug() << buf.str();
-	return std::vector<Botan::X509_Certificate>();
+
+	if ("tls-server" == type)
+		result.push_back(m_cert);
+
+	return result;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

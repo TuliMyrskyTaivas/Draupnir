@@ -92,7 +92,7 @@ namespace Draupnir
 
 			if (incoming.events & EPOLLRDHUP)
 			{
-				Logger::GetInstance().Debug() << "server terminated";
+				Logger::GetInstance().Debug() << "server has closed the connection";
 				m_socket.reset();
 				break;
 			}
