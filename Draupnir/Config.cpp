@@ -19,7 +19,7 @@ namespace Draupnir
 {
 	////////////////////////////////////////////////////////////////////////////////////////////////////
 	Config::Config(int argc, char* const argv[])
-		: m_mode(Target)
+		: m_mode(Undefined)
 		, m_peer(nullptr)
 		, m_isVerbose(false)
 	{
@@ -59,6 +59,9 @@ namespace Draupnir
 				throw std::invalid_argument("invalid command-line parameter, run with -h for reference");
 			}
 		}
+
+		if (Undefined == m_mode)
+			throw std::runtime_error("either -c or -t option should be specified, run with -h for reference");
 	}
 
 	////////////////////////////////////////////////////////////////////////////////////////////////////

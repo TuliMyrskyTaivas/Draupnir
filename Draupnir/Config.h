@@ -23,6 +23,7 @@ namespace Draupnir
 	public:
 		enum Mode
 		{
+			Undefined,
 			Target,
 			Control
 		};

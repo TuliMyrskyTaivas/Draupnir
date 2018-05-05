@@ -11,7 +11,7 @@
 
 #include <cstring>
 #include <cerrno>
-#include <array>
+#include <vector>
 
 #include <sys/socket.h>
 #include <sys/epoll.h>
@@ -113,7 +113,7 @@ namespace Draupnir
 		while(true)
 		{
 			struct sockaddr inAddr;
-			socklen_t inAddrLen;
+			socklen_t inAddrLen = sizeof(struct sockaddr_in);
 			SocketHandle sock(accept(m_listeningSocket.get(), &inAddr, &inAddrLen));
 			if (!sock)
 			{
@@ -125,17 +125,26 @@ namespace Draupnir
 			}
 			MakeSocketNonBlocking(sock);
 
-			std::array<char, NI_MAXHOST> hostname;
-			std::array<char, NI_MAXSERV> portname;
-			POSIX_CHECK(getnameinfo(&inAddr,
+			std::vector<char> hostname(NI_MAXHOST);
+			std::vector<char> portname(NI_MAXSERV);
+
+			const int gaiRetVal = getnameinfo(&inAddr,
 				inAddrLen,
 				hostname.data(),
 				hostname.size(),
 				portname.data(),
 				portname.size(),
-				NI_NUMERICHOST | NI_NUMERICSERV));
-			Logger::GetInstance().Info() << "accepted connection from "
-				<< hostname.data() << ':' << portname.data();
+				NI_NUMERICHOST | NI_NUMERICSERV);
+			if (0 == gaiRetVal)
+			{
+				Logger::GetInstance().Info() << "accepted connection from "
+					<< hostname.data() << ':' << portname.data();
+			}
+			else
+			{
+				Logger::GetInstance().Error() << "failed to get peer address: "
+					<< gai_strerror(gaiRetVal);
+			}
 
 			struct epoll_event event;
 			event.data.fd = sock.get();
