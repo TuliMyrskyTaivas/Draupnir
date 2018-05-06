@@ -18,15 +18,16 @@
 
 namespace Draupnir
 {
-	class TargetSession
+	class TargetSession : private TLSCallbacks
 	{
 		TLSPolicy m_policy;
 		SocketHandle m_handle;
-		TLSCallbacks m_tlsCallbacks;
 		CredentialsManager m_creds;
 		Botan::AutoSeeded_RNG m_rng;
 		Botan::TLS::Session_Manager_In_Memory m_sessionMgr;
 		Botan::TLS::Server m_tls;
+
+		void tls_session_activated() final override;
 
 	public:
 		explicit TargetSession(SocketHandle&& handle);

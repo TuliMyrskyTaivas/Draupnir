@@ -9,6 +9,7 @@
 #include "Config.h"
 #include "Logger.h"
 
+#include <iostream>
 #include <cstring>
 #include <cerrno>
 
@@ -23,9 +24,8 @@ namespace Draupnir
 	ControlConductor::ControlConductor(std::shared_ptr<Config> config)
 		: Conductor(config)
 		, m_socket(ConnectSocket())
-		, m_tlsCallbacks(m_socket.get())
 		, m_sessionMgr(m_rng)
-		, m_tls(m_tlsCallbacks, m_sessionMgr, m_creds, m_policy, m_rng)
+		, m_tls(*this, m_sessionMgr, m_creds, m_policy, m_rng)
 	{
 	}
 
@@ -65,6 +65,73 @@ namespace Draupnir
 
 		Logger::GetInstance().Debug() << "connection established";
 		return sock;
+	}
+
+	////////////////////////////////////////////////////////////////////////////////////////////////////
+	void ControlConductor::WriteToSocket(const std::vector<uint8_t>&& buf) const
+	{
+		auto size = buf.size();
+		auto pos = buf.data();
+		while (size)
+		{
+			const ssize_t res = write(m_socket.get(), pos, size);
+			if (-1 == res && (errno != EINTR || errno != EAGAIN))
+				throw std::runtime_error("failed to write: " + std::string(strerror(errno)));
+
+			size -= static_cast<size_t>(res);
+			pos += res;
+		}
+	}
+
+	////////////////////////////////////////////////////////////////////////////////////////////////////
+	void ControlConductor::tls_record_received(
+		uint64_t seqNo __attribute__((unused)),
+		const uint8_t data[],
+		size_t size)
+	{
+		std::cout << std::string(data, data + size);
+	}
+
+	////////////////////////////////////////////////////////////////////////////////////////////////////
+	void ControlConductor::tls_emit_data(const uint8_t data[], size_t size)
+	{
+		WriteToSocket(std::vector<uint8_t>(data, data + size));
+	}
+
+	////////////////////////////////////////////////////////////////////////////////////////////////////
+	void ControlConductor::tls_alert(Botan::TLS::Alert alert)
+	{
+		if (Botan::TLS::Alert::CLOSE_NOTIFY == alert.type())
+		{
+			Logger::GetInstance().Debug() << "TLS close notitification received, closing the socket";
+			m_tls.close();
+		}
+		else
+		{
+			Logger::GetInstance().Error() << "TLS alert: " << alert.type_string();
+		}
+	}
+
+	////////////////////////////////////////////////////////////////////////////////////////////////////
+	bool ControlConductor::tls_session_established(const Botan::TLS::Session& session)
+	{
+		const auto& info = session.server_info();
+		Logger::GetInstance().Debug() << "TLS session with " << info.hostname()
+		    << ":" << info.port() << " established";
+		Logger::GetInstance().Debug() << session.version().to_string() << " using "
+			<< session.ciphersuite().to_string();
+		return true; // enable caching of the session in the configured session manager
+	}
+
+	////////////////////////////////////////////////////////////////////////////////////////////////////
+	void ControlConductor::tls_verify_cert_chain(
+		const std::vector<Botan::X509_Certificate>& certChain __attribute__((unused)),
+		const std::vector<std::shared_ptr<const Botan::OCSP::Response>>& ocspResponses __attribute__((unused)),
+		const std::vector<Botan::Certificate_Store*>& trustedRoots __attribute__((unused)),
+		Botan::Usage_Type usage __attribute__((unused)),
+		const std::string& hostname __attribute__((unused)),
+		const Botan::TLS::Policy& policy __attribute__((unused)))
+	{
 	}
 
 	////////////////////////////////////////////////////////////////////////////////////////////////////
