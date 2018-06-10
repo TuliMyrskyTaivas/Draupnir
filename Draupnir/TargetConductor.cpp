@@ -64,16 +64,20 @@ namespace Draupnir
 			for (int idx = 0; idx < numEvents; ++idx)
 			{
 				const auto& event = events[idx];
+				const auto& fd = event.data.fd;
+				
 				if ((event.events & EPOLLERR) || (event.events & EPOLLHUP) ||
 					(!(event.events & EPOLLIN)))
 				{
-					log.Error() << "error reading socket " << event.data.fd;
-					m_activeSessions.erase(event.data.fd);
-					close(event.data.fd);
+					log.Error() << "error reading socket " << fd;
+					if (!m_activeSessions.erase(fd))
+						log.Error() << "failed to find active session for FD "
+							<< fd << ", memory leak is possible";
+					close(fd);
 					continue;
 				}
 
-				if ((int)m_listeningSocket.get() == event.data.fd)
+				if ((int)m_listeningSocket.get() == fd)
 				{
 					AcceptConnections();
 				}
@@ -82,11 +86,11 @@ namespace Draupnir
 					// We have a data on the socket waiting to be read. We must read whatever
 					// data is available completely, as we are running in edge-triggered mode
 					// and won't get a notification again for the same data
-					auto& session = m_activeSessions.at(event.data.fd);
+					auto& session = m_activeSessions.at(fd);
 					while (true)
 					{
 						std::vector<uint8_t> buf(512);
-						const ssize_t count = read(event.data.fd, buf.data(), buf.size());
+						const ssize_t count = read(fd, buf.data(), buf.size());
 						if (count == -1)
 						{
 							// If errno == EAGAIN, that means we have read all the data.

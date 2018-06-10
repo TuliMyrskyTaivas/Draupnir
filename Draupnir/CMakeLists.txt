@@ -7,7 +7,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 # Compilation modes
-set (CMAKE_CXX_FLAGS "-ggdb -Wall -Wpedantic -Wextra -Werror")
+set (CMAKE_CXX_FLAGS "-ggdb -Wall -Wpedantic -Wextra -Werror -static-libgcc -static-libstdc++")
 set (CMAKE_CXX_FLAGS_DEBUG "-O0")
 set (CMAKE_CXX_FLAGS_RELEASE "-Os -mtune=native -march=native")
 
@@ -37,8 +37,14 @@ add_custom_command(OUTPUT cert_obj.o
 	COMMAND ${CMAKE_OBJCOPY}	
 	ARGS --input binary --output elf64-x86-64 --binary-architecture i386:x86-64 --rename-section .data=.rodata,CONTENTS,ALLOC,LOAD,READONLY,DATA cert.rsa cert_obj.o
 )
+string (TIMESTAMP BUILD_DATE UTC)
+configure_file (
+	${CMAKE_CURRENT_SOURCE_DIR}/version.h.in
+	${CMAKE_CURRENT_BINARY_DIR}/version.h
+)
 
 include_directories(${BOTAN_INCLUDE_DIR})
+add_definitions(-D_GNU_SOURCE)
 
 add_executable (draupnir
 	Conductor.h
