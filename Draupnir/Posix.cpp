@@ -7,11 +7,24 @@
 #include "Posix.h"
 
 #include <unistd.h>
+#include <fcntl.h>
 
 namespace Draupnir
 {
+	////////////////////////////////////////////////////////////////////////////////////////////////////
 	void FDDeleter::operator()(FDDeleter::pointer p)
 	{
 		close(p);
+	}
+	
+	////////////////////////////////////////////////////////////////////////////////////////////////////
+	void MakeSocketNonBlocking(SocketHandle& sock)
+	{
+		int flags = fcntl(sock.get(), F_GETFL, 0);
+		if (-1 == flags)
+			throw std::runtime_error("failed to get socket attibutes: " + std::string(strerror(errno)));
+
+		flags |= O_NONBLOCK;
+		POSIX_CHECK(fcntl(sock.get(), F_SETFL, flags));
 	}
 } // namespace Draupnir

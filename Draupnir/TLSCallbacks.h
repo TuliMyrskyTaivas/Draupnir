@@ -14,8 +14,8 @@ namespace Draupnir
 	class TLSCallbacks : public Botan::TLS::Callbacks
 	{
 		int m_socket = -1;
-
-		void RawWrite(const std::vector<uint8_t>&& buf);
+		
+		void RawWrite(const std::vector<uint8_t>&& buf);			
 
 	public:
 		explicit TLSCallbacks(int sock);

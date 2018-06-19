@@ -102,4 +102,6 @@ namespace Draupnir
 		void operator()(pointer p);
 	};
 	typedef std::unique_ptr<int, FDDeleter> SocketHandle;
+	
+	void MakeSocketNonBlocking(SocketHandle& sock);	
 } // namespace Draupnir

@@ -9,7 +9,6 @@
 #include "Posix.h"
 #include "TLSPolicy.h"
 #include "TLSCallbacks.h"
-#include "TargetSession.h"
 #include "CredentialsManager.h"
 
 #include <botan/auto_rng.h>
@@ -22,31 +21,44 @@ struct passwd;
 
 namespace Draupnir
 {
-	class TargetSession : private TLSCallbacks
+
+class TargetConductor;
+	
+class TargetSession : private TLSCallbacks
+{
+	TargetConductor& m_parent;	
+	TLSPolicy m_policy;
+	SocketHandle m_handle;
+	CredentialsManager m_creds;
+	Botan::AutoSeeded_RNG m_rng;
+	Botan::TLS::Session_Manager_In_Memory m_sessionMgr;
+	Botan::TLS::Server m_tls;		
+		
+	SocketHandle m_ptsMaster;
+	SocketHandle m_ptsSlave;
+
+	// Overrides some of TLSCallbacks
+	void tls_session_activated() final override;
+	void tls_record_received(uint64_t seqNo, const uint8_t data[], size_t size) final override;
+		
+	void RunShell();
+	void ReportError(const std::string& message);
+	std::string GetUserName(const struct passwd* userName);
+
+public:
+	explicit TargetSession(SocketHandle&& handle, TargetConductor& parent);
+
+	void ReceivedNetworkData(const uint8_t* const data, size_t count);
+	void ReceivedConsoleData(const uint8_t* const data, size_t count);
+	const SocketHandle& GetPtySocket() const
 	{
-		TLSPolicy m_policy;
-		SocketHandle m_handle;
-		CredentialsManager m_creds;
-		Botan::AutoSeeded_RNG m_rng;
-		Botan::TLS::Session_Manager_In_Memory m_sessionMgr;
-		Botan::TLS::Server m_tls;
-
-		const int ReadEnd = 0;
-		const int WriteEnd = 1;
-
-		std::array<SocketHandle, 2> m_pipeStdin;
-		std::array<SocketHandle, 2> m_pipeStdout;
-		SocketHandle m_ptsMaster;
-		SocketHandle m_ptsSlave;
-
-		void tls_session_activated() final override;
-		void RunShell();
-		void ReportError(const std::string& message);
-		std::string GetUserName(const struct passwd* userName);
-
-	public:
-		explicit TargetSession(SocketHandle&& handle);
-
-		void ReceivedData(const uint8_t* const data, size_t count);
-	};
+		return m_ptsMaster;
+	}
+	const SocketHandle& GetNetworkSocket() const
+	{
+		return m_handle;
+	}
+	
+};
+	
 } // namespace Draupnir

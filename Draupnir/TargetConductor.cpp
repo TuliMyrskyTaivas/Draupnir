@@ -80,7 +80,7 @@ namespace Draupnir
 				if ((int)m_listeningSocket.get() == fd)
 				{
 					AcceptConnections();
-				}
+				}				
 				else
 				{
 					// We have a data on the socket waiting to be read. We must read whatever
@@ -102,13 +102,33 @@ namespace Draupnir
 						else if (count == 0)
 							break;
 
-						session.ReceivedData(buf.data(), count);
+						if (fd == (int)session->GetNetworkSocket().get())
+							session->ReceivedNetworkData(buf.data(), count);
+						else if (fd == (int)session->GetPtySocket().get())
+							session->ReceivedConsoleData(buf.data(), count);
 					}
 				}
 			}
 		}
 	}
 
+	////////////////////////////////////////////////////////////////////////////////////////////////////
+	void TargetConductor::ActivateSession(const TargetSession& session)
+	{
+		const auto ptyHandle = session.GetPtySocket().get();
+		auto netHandle = session.GetNetworkSocket().get();
+		
+		struct epoll_event event;
+		event.data.fd = ptyHandle;
+		event.events = EPOLLIN | EPOLLET;
+		POSIX_CHECK(epoll_ctl(m_poll.get(), EPOLL_CTL_ADD, ptyHandle, &event));
+		
+		auto& activeSession = m_activeSessions.at(netHandle);
+		// Bacause of unique nature on UNIX handle we can use the single
+		// registry of sessions to look up both by network handle and PTY handle
+		m_activeSessions.emplace(std::make_pair(ptyHandle, activeSession));
+	}
+	
 	////////////////////////////////////////////////////////////////////////////////////////////////////
 	void TargetConductor::AcceptConnections()
 	{
@@ -155,18 +175,9 @@ namespace Draupnir
 			event.events = EPOLLIN | EPOLLET;
 			POSIX_CHECK(epoll_ctl(m_poll.get(), EPOLL_CTL_ADD, sock.get(), &event));
 
-			m_activeSessions.emplace(std::make_pair(sock.get(), std::move(sock)));
+			auto handle = sock.get();
+			auto newSession = std::make_shared<TargetSession>(std::move(sock), *this);
+			m_activeSessions.emplace(std::make_pair(handle, newSession));
 		}
-	}
-
-	////////////////////////////////////////////////////////////////////////////////////////////////////
-	void TargetConductor::MakeSocketNonBlocking(SocketHandle& sock) const
-	{
-		int flags = fcntl(sock.get(), F_GETFL, 0);
-		if (-1 == flags)
-			throw std::runtime_error("failed to get socket attibutes: " + std::string(strerror(errno)));
-
-		flags |= O_NONBLOCK;
-		POSIX_CHECK(fcntl(sock.get(), F_SETFL, flags));
-	}
+	}	
 } // namespace Draupnir

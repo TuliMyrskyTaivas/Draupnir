@@ -11,22 +11,27 @@
 #include "TargetSession.h"
 
 #include <map>
+#include <memory>
 
 namespace Draupnir
-{
+{		
 	class TargetConductor final : public Conductor
 	{
 		SocketHandle m_listeningSocket;
 		SocketHandle m_poll;
 
-		std::map<int, TargetSession> m_activeSessions;
+		using Session = std::shared_ptr<TargetSession>;		
+		std::map<int, Session> m_activeSessions;		
 
 		SocketHandle BindSocket() const;
-		void AcceptConnections();
-		void MakeSocketNonBlocking(SocketHandle& sock) const;
+		void AcceptConnections();		
+		
 	public:
 		virtual ~TargetConductor() = default;
 		void Run() override;
+		
+		// Add PTY handle of the session to the polling cycle
+		void ActivateSession(const TargetSession& session);
 
 	protected:
 		friend class Conductor;

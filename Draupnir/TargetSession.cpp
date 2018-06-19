@@ -5,6 +5,7 @@
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #include "TargetSession.h"
+#include "TargetConductor.h"
 #include "Logger.h"
 #include "Posix.h"
 
@@ -17,6 +18,7 @@
 
 #include <sys/utsname.h>
 #include <sys/types.h>
+#include <sys/ioctl.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <pwd.h>
@@ -26,34 +28,45 @@ using namespace std::literals;
 namespace Draupnir
 {
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-TargetSession::TargetSession(SocketHandle&& handle)
+TargetSession::TargetSession(SocketHandle&& handle, TargetConductor& parent)
 	: TLSCallbacks(handle.get())
+	, m_parent(parent)	
 	, m_handle(std::move(handle))
 	, m_sessionMgr(m_rng)
 	, m_tls(*this, m_sessionMgr, m_creds, m_policy, m_rng)
-{
-	// Create pipes as STDIN and STDOUT for the shell process
-	int pipeHandles[2];
-
-	POSIX_CHECK(pipe2(pipeHandles, O_NONBLOCK));
-	m_pipeStdin[ReadEnd].reset(pipeHandles[ReadEnd]);
-	m_pipeStdin[WriteEnd].reset(pipeHandles[WriteEnd]);
-
-	POSIX_CHECK(pipe2(pipeHandles, O_NONBLOCK));
-	m_pipeStdout[ReadEnd].reset(pipeHandles[ReadEnd]);
-	m_pipeStdout[WriteEnd].reset(pipeHandles[WriteEnd]);
+{	
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-void TargetSession::ReceivedData(const uint8_t* const data, size_t size)
+void TargetSession::ReceivedNetworkData(const uint8_t* const data, size_t size)
 {
 	m_tls.received_data(data, size);
+}
+	
+////////////////////////////////////////////////////////////////////////////////////////////////////
+void TargetSession::ReceivedConsoleData(const uint8_t* const data, size_t size)	
+{
+	POSIX_CHECK(write(m_ptsMaster.get(), data, size));
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 void TargetSession::tls_session_activated()
 {	
 	RunShell();	
+}
+	
+////////////////////////////////////////////////////////////////////////////////////////////////////
+void TargetSession::tls_record_received(
+		uint64_t seqNo __attribute__((unused)),
+		const uint8_t data[],
+		size_t size)
+try
+{
+	POSIX_CHECK(write(m_ptsMaster.get(), data, size));
+}
+catch(const std::exception& e)
+{
+	ReportError(e.what());
 }
 	
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -87,13 +100,53 @@ try
 	introMessage << "Effective user: " << GetUserName(getpwuid(geteuid())) << '\n';
 	introMessage << "PTS: " << masterPtsName.data() << '\n';
 	m_tls.send(introMessage.str());
-	m_tls.close();
-	m_handle.reset();
+	
+	// Forking the child process to run the shell
+	const auto forkResult = fork();
+	if (-1 == forkResult)
+		throw std::runtime_error("failed to run child process " + std::string(strerror(errno)));
+	
+	// Parent process
+	if (forkResult)
+	{
+		// Parent process will use m_ptsMaster to communicate with the child
+		m_ptsSlave.reset();
+		MakeSocketNonBlocking(m_ptsMaster);
+		// Add our PTY handle to the polling cycle
+		m_parent.ActivateSession(*this);
+	}
+	// Child process
+	else
+	{
+		m_ptsMaster.reset();
+		// We're trying to set up the m_ptsSlave to be STDIN, STDOUT and STDERR
+		// before exec() so everything looks normal to the shell. Unfortunately,
+		// m_ptsSlave may end up as one of the STDIN_FILENO, STDOUT_FILENO or
+		// STDERR_FILEN values by the chance. Set it to STDERR_FILENO + 1 to clear
+		// the way for the following dup2()
+		if(m_ptsSlave.get() < STDERR_FILENO + 1)
+		{
+			POSIX_CHECK(dup2(m_ptsSlave.get(), STDERR_FILENO + 1));
+			m_ptsSlave.reset(STDERR_FILENO + 1);
+		}
+		
+		POSIX_CHECK(dup2(m_ptsSlave.get(), STDIN_FILENO));
+		POSIX_CHECK(dup2(m_ptsSlave.get(), STDOUT_FILENO));
+		POSIX_CHECK(dup2(m_ptsSlave.get(), STDERR_FILENO));
+		m_ptsSlave.reset();
+		
+		// Set the PTY as controlling
+		POSIX_CHECK(setsid());
+		POSIX_CHECK(ioctl(STDIN_FILENO, TIOCSCTTY, 1));
+		
+		// Invoke the shell		
+		POSIX_CHECK(execl("/bin/sh", "/bin/sh", nullptr));
+	}		
 }
 catch(const std::exception& e)
 {
 	ReportError(e.what());
-	m_tls.close();
+	m_tls.close();	
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -113,7 +166,7 @@ std::string TargetSession::GetUserName(const struct passwd* userInfo)
 void TargetSession::ReportError(const std::string& message)
 {
 	if (m_tls.is_active())
-		m_tls.send(message);
+		m_tls.send("Error: " + message);
 	
 	Logger::GetInstance().Error() << message;
 }
