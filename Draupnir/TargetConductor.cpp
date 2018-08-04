@@ -73,6 +73,10 @@ namespace Draupnir
 					if (!m_activeSessions.erase(fd))
 						log.Error() << "failed to find active session for FD "
 							<< fd << ", memory leak is possible";
+					if (event.events & EPOLLERR)
+						log.Error() << "poll error " << strerror(errno);
+					else if (event.events & EPOLLHUP)
+						log.Error() << "poll hup";
 					close(fd);
 					continue;
 				}
@@ -97,15 +101,15 @@ namespace Draupnir
 							// So go back to the main loop.
 							if(EAGAIN == errno)
 								break;
-							throw std::runtime_error("socket read error: " + std::string(strerror(errno)));
+							throw std::runtime_error("socket read error: " + std::string(strerror(errno)) + ", fd=" + std::to_string(fd));
 						}
 						else if (count == 0)
 							break;
 
 						if (fd == (int)session->GetNetworkSocket().get())
-							session->ReceivedNetworkData(buf.data(), count);
+							session->OnNetworkData(buf.data(), count);
 						else if (fd == (int)session->GetPtySocket().get())
-							session->ReceivedConsoleData(buf.data(), count);
+							session->OnConsoleData(buf.data(), count);
 					}
 				}
 			}
@@ -117,6 +121,9 @@ namespace Draupnir
 	{
 		const auto ptyHandle = session.GetPtySocket().get();
 		auto netHandle = session.GetNetworkSocket().get();
+		
+		Logger::GetInstance().Debug() << "activating session with network socket " << netHandle
+			<< " and PTY socket " << ptyHandle;
 		
 		struct epoll_event event;
 		event.data.fd = ptyHandle;

@@ -38,15 +38,15 @@ TargetSession::TargetSession(SocketHandle&& handle, TargetConductor& parent)
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-void TargetSession::ReceivedNetworkData(const uint8_t* const data, size_t size)
+void TargetSession::OnNetworkData(const uint8_t* const data, size_t size)
 {
-	m_tls.received_data(data, size);
+	m_tls.received_data(data, size);	
 }
 	
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-void TargetSession::ReceivedConsoleData(const uint8_t* const data, size_t size)	
-{
-	POSIX_CHECK(write(m_ptsMaster.get(), data, size));
+void TargetSession::OnConsoleData(const uint8_t* const data, size_t size)	
+{		
+	m_tls.send(data, size);	
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -61,7 +61,7 @@ void TargetSession::tls_record_received(
 		const uint8_t data[],
 		size_t size)
 try
-{
+{	
 	POSIX_CHECK(write(m_ptsMaster.get(), data, size));
 }
 catch(const std::exception& e)
@@ -111,13 +111,14 @@ try
 	{
 		// Parent process will use m_ptsMaster to communicate with the child
 		m_ptsSlave.reset();
-		MakeSocketNonBlocking(m_ptsMaster);
+		MakeSocketNonBlocking(m_ptsMaster);		
 		// Add our PTY handle to the polling cycle
-		m_parent.ActivateSession(*this);
+		m_parent.ActivateSession(*this);		
 	}
 	// Child process
 	else
-	{
+	{		
+		Logger::GetInstance().Debug() << "child is executing, m_ptsSlave=" << m_ptsSlave.get();
 		m_ptsMaster.reset();
 		// We're trying to set up the m_ptsSlave to be STDIN, STDOUT and STDERR
 		// before exec() so everything looks normal to the shell. Unfortunately,
@@ -137,7 +138,7 @@ try
 		
 		// Set the PTY as controlling
 		POSIX_CHECK(setsid());
-		POSIX_CHECK(ioctl(STDIN_FILENO, TIOCSCTTY, 1));
+		POSIX_CHECK(ioctl(STDIN_FILENO, TIOCSCTTY, 0));
 		
 		// Invoke the shell		
 		POSIX_CHECK(execl("/bin/sh", "/bin/sh", nullptr));
@@ -165,10 +166,9 @@ std::string TargetSession::GetUserName(const struct passwd* userInfo)
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 void TargetSession::ReportError(const std::string& message)
 {
-	if (m_tls.is_active())
-		m_tls.send("Error: " + message);
-	
 	Logger::GetInstance().Error() << message;
+	if (m_tls.is_active())
+		m_tls.send("Error: " + message);	
 }
 	
 } // namespace Draupnir

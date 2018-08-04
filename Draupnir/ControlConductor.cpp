@@ -17,6 +17,7 @@
 #include <sys/epoll.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <fcntl.h>
 
 namespace Draupnir
 {
@@ -88,7 +89,7 @@ namespace Draupnir
 		uint64_t seqNo __attribute__((unused)),
 		const uint8_t data[],
 		size_t size)
-	{
+	{		
 		std::cout << std::string(data, data + size);
 	}
 
@@ -148,42 +149,72 @@ namespace Draupnir
 		event.data.fd = m_socket.get();
 		event.events = EPOLLIN | EPOLLRDHUP | EPOLLET;
 		POSIX_CHECK(epoll_ctl(pollHandle.get(), EPOLL_CTL_ADD, m_socket.get(), &event));
+		
+		// Make STDIN non blocking
+		int flags = fcntl(STDIN_FILENO, F_GETFL, 0);
+		if (-1 == flags)
+			throw std::runtime_error("failed to get socket attibutes: " + std::string(strerror(errno)));
 
+		flags |= O_NONBLOCK;
+		POSIX_CHECK(fcntl(STDIN_FILENO, F_SETFL, flags));
+		
+		// Add STDIN to the polling cycle
+		event.data.fd = STDIN_FILENO;
+		POSIX_CHECK(epoll_ctl(pollHandle.get(), EPOLL_CTL_ADD, STDIN_FILENO, &event));
+		
 		while (!m_tls.is_closed())
-		{
-			struct epoll_event incoming;
-			POSIX_CHECK(epoll_wait(pollHandle.get(), &incoming, 1, -1));
-			if ((incoming.events & EPOLLERR) || (incoming.events & EPOLLHUP) ||
-				(!(incoming.events & EPOLLIN)))
-				throw std::runtime_error("read failed");
-
-			if (incoming.events & EPOLLRDHUP)
+		{			
+			std::vector<struct epoll_event> events(64);
+			const int numEvents = epoll_wait(pollHandle.get(), events.data(), events.size(), -1);
+			POSIX_CHECK(numEvents);
+			
+			for (int idx = 0; idx < numEvents; ++idx)
 			{
-				Logger::GetInstance().Debug() << "server has closed the connection";
-				m_socket.reset();
-				break;
-			}
-
-			// We have a data on the socket waiting to be read. We must read whatever
-			// data is available completely, as we are running in edge-triggered mode
-			// and won't get a notification again for the same data
-			while(true)
-			{
-				std::vector<uint8_t> buf(512);
-				const ssize_t count = read(m_socket.get(), buf.data(), buf.size());
-				if (count == -1)
+				
+				const auto& event = events[idx];
+				const auto& fd = event.data.fd;
+				
+				if ((event.events & EPOLLERR) || (event.events & EPOLLHUP) ||
+					(!(event.events & EPOLLIN)))
 				{
-					// If errno == EAGAIN, that means we have read all the data.
-					// So go back to the main loop.
-					if(EAGAIN == errno)
-						break;
-					throw std::runtime_error("socket read error: " + std::string(strerror(errno)));
-				}
-				else if (count == 0)
-					break;
+					close(fd);
+					throw std::runtime_error("read failed on FD " + std::to_string(fd));
+				}					
 
-				m_tls.received_data(buf.data(), count);
-			}
+				if (event.events & EPOLLRDHUP)
+				{
+					Logger::GetInstance().Debug() << "server has closed the connection";
+					m_tls.close();									
+				}						
+
+				// We have a data on the socket waiting to be read. We must read whatever
+				// data is available completely, as we are running in edge-triggered mode
+				// and won't get a notification again for the same data
+				while(true)
+				{
+					std::vector<uint8_t> buf(512);
+					const ssize_t count = read(fd, buf.data(), buf.size());
+					if (count == -1)
+					{
+						// If errno == EAGAIN, that means we have read all the data.
+						// So go back to the main loop.
+						if(EAGAIN == errno)
+							break;
+						throw std::runtime_error("socket read error: " + std::string(strerror(errno)));
+					}
+					else if (count == 0)
+						break;								
+
+					if (fd == STDIN_FILENO)
+					{					
+						m_tls.send(buf.data(), count);
+					}
+					else
+					{									
+						m_tls.received_data(buf.data(), count);
+					}
+				}
+			}			
 		}
 	}
 } // namespace Draupnir

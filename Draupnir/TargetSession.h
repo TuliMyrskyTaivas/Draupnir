@@ -36,6 +36,8 @@ class TargetSession : private TLSCallbacks
 		
 	SocketHandle m_ptsMaster;
 	SocketHandle m_ptsSlave;
+	
+	pid_t m_pid;
 
 	// Overrides some of TLSCallbacks
 	void tls_session_activated() final override;
@@ -47,18 +49,23 @@ class TargetSession : private TLSCallbacks
 
 public:
 	explicit TargetSession(SocketHandle&& handle, TargetConductor& parent);
-
-	void ReceivedNetworkData(const uint8_t* const data, size_t count);
-	void ReceivedConsoleData(const uint8_t* const data, size_t count);
-	const SocketHandle& GetPtySocket() const
+	
+	void OnNetworkData(const uint8_t* const data, size_t count);
+	void OnConsoleData(const uint8_t* const data, size_t count);
+	
+	const SocketHandle& GetPtySocket() const noexcept
 	{
 		return m_ptsMaster;
 	}
-	const SocketHandle& GetNetworkSocket() const
+	const SocketHandle& GetNetworkSocket() const noexcept
 	{
 		return m_handle;
 	}
 	
+	pid_t GetPID() const noexcept
+	{
+		return m_pid;
+	}
 };
 	
 } // namespace Draupnir
